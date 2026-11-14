@@ -1,0 +1,169 @@
+x-app: &app
+  restart: unless-stopped
+  init: true
+  read_only: true
+  cap_drop: [ALL]
+  security_opt: [no-new-privileges:true]
+
+x-mongo-env: &mongo-env
+  MONGO_HOST: mongodb
+  MONGO_USER: ${MONGO_USER:-admin}
+  MONGO_PASSWORD: ${MONGO_PASSWORD:-password}
+
+x-identity-env: &identity-env
+  RIDEMESH_INTERNAL_KEY: ${RIDEMESH_INTERNAL_KEY:-}
+
+x-rate-limit-env: &rate-limit-env
+  REDIS_URL: redis://redis:6379/0
+  RATE_LIMIT_KEY_SECRET: ${RATE_LIMIT_KEY_SECRET:-ridemesh-local-rate-limit-key-replace-before-sharing}
+  TRUSTED_PROXY_CIDRS: ${TRUSTED_PROXY_CIDRS:-}
+  RATE_LIMIT_LOGIN_IP: ${RATE_LIMIT_LOGIN_IP:-10/1m}
+  RATE_LIMIT_LOGIN_ACCOUNT: ${RATE_LIMIT_LOGIN_ACCOUNT:-5/15m}
+  RATE_LIMIT_RIDE_REQUEST: ${RATE_LIMIT_RIDE_REQUEST:-20/1m}
+  RATE_LIMIT_LOCATION_UPDATE: ${RATE_LIMIT_LOCATION_UPDATE:-120/1m}
+  RATE_LIMIT_OFFER_POLL: ${RATE_LIMIT_OFFER_POLL:-120/1m}
+  RATE_LIMIT_OFFER_RESPONSE: ${RATE_LIMIT_OFFER_RESPONSE:-30/1m}
+  RATE_LIMIT_EVENT_STREAM: ${RATE_LIMIT_EVENT_STREAM:-30/1m}
+
+x-sse-env: &sse-env
+  SSE_MAX_CONNECTIONS: ${SSE_MAX_CONNECTIONS:-1000}
+  SSE_MAX_CONNECTIONS_PER_ACCOUNT: ${SSE_MAX_CONNECTIONS_PER_ACCOUNT:-5}
+  SSE_SUBSCRIBER_BUFFER: ${SSE_SUBSCRIBER_BUFFER:-32}
+  SSE_HEARTBEAT_INTERVAL: ${SSE_HEARTBEAT_INTERVAL:-15s}
+  SSE_WRITE_TIMEOUT: ${SSE_WRITE_TIMEOUT:-5s}
+  SSE_MAX_LIFETIME: ${SSE_MAX_LIFETIME:-15m}
+
+x-rabbit-env: &rabbit-env
+  RABBITMQ_HOST: rabbitmq
+  RABBITMQ_DEFAULT_USER: ${RABBITMQ_DEFAULT_USER:-ridemesh}
+  RABBITMQ_DEFAULT_PASS: ${RABBITMQ_DEFAULT_PASS:-ridemesh-local}
+
+x-health: &health
+  interval: 5s
+  timeout: 3s
+  retries: 15
+  start_period: 8s
+
+services:
+  gateway:
+    <<: *app
+    image: ridemesh/gateway:local
+    build:
+      context: .
+      args: {SERVICE: gateway}
+    environment:
+      <<: [*mongo-env, *rabbit-env, *identity-env, *rate-limit-env, *sse-env]
+      MONGO_DB: ${ACCOUNTS_MONGO_DB:-ridemesh_accounts}
+      RIDEMESH_BOOTSTRAP_EMAIL: ${RIDEMESH_BOOTSTRAP_EMAIL:-}
+      RIDEMESH_BOOTSTRAP_PASSWORD: ${RIDEMESH_BOOTSTRAP_PASSWORD:-}
+      TRIP_URL: http://trip:8082
+      DRIVER_URL: http://driver:8083
+      PAYMENT_URL: http://payment:8084
+    ports:
+      - "127.0.0.1:${GATEWAY_PORT:-8080}:8080"
+    depends_on:
+      trip: {condition: service_healthy}
+      driver: {condition: service_healthy}
+      payment: {condition: service_healthy}
+      redis: {condition: service_healthy}
+      rabbitmq: {condition: service_healthy}
+    healthcheck:
+      <<: *health
+      test: [CMD, wget, -q, -O, /dev/null, "http://127.0.0.1:8080/ready"]
+
+  trip:
+    <<: *app
+    image: ridemesh/trip:local
+    build:
+      context: .
+      args: {SERVICE: trip}
+    environment:
+      <<: [*mongo-env, *rabbit-env, *identity-env]
+      MONGO_DB: ${MONGO_DB:-ridemesh}
+      DRIVER_URL: http://driver:8083
+      DISPATCH_BATCH_SIZE: ${DISPATCH_BATCH_SIZE:-3}
+      DISPATCH_RADIUS_METERS: ${DISPATCH_RADIUS_METERS:-8000}
+      DISPATCH_LOCATION_MAX_AGE: ${DISPATCH_LOCATION_MAX_AGE:-90s}
+      DISPATCH_OFFER_TTL: ${DISPATCH_OFFER_TTL:-15s}
+    depends_on:
+      mongodb: {condition: service_healthy}
+      rabbitmq: {condition: service_healthy}
+    healthcheck:
+      <<: *health
+      test: [CMD, wget, -q, -O, /dev/null, "http://127.0.0.1:8082/ready"]
+
+  driver:
+    <<: *app
+    image: ridemesh/driver:local
+    build:
+      context: .
+      args: {SERVICE: driver}
+    environment:
+      <<: [*mongo-env, *identity-env]
+      MONGO_DB: ${MONGO_DB:-ridemesh}
+    depends_on:
+      mongodb: {condition: service_healthy}
+    healthcheck:
+      <<: *health
+      test: [CMD, wget, -q, -O, /dev/null, "http://127.0.0.1:8083/ready"]
+
+  payment:
+    <<: *app
+    image: ridemesh/payment:local
+    build:
+      context: .
+      args: {SERVICE: payment}
+    environment:
+      <<: [*mongo-env, *rabbit-env, *identity-env]
+      MONGO_DB: ${PAYMENT_MONGO_DB:-ridemesh_payment}
+      TRIP_URL: http://trip:8082
+    depends_on:
+      mongodb: {condition: service_healthy}
+      rabbitmq: {condition: service_healthy}
+    healthcheck:
+      <<: *health
+      test: [CMD, wget, -q, -O, /dev/null, "http://127.0.0.1:8084/ready"]
+
+  mongodb:
+    image: mongo:8.0
+    restart: unless-stopped
+    environment:
+      # Keep MongoDB 8 demo containers usable on kernels affected by SERVER-121912.
+      GLIBC_TUNABLES: glibc.pthread.rseq=1
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_USER:-admin}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_PASSWORD:-password}
+    volumes:
+      - mongodb:/data/db
+    healthcheck:
+      <<: *health
+      test: [CMD, mongosh, --quiet, --eval, "if (!db.adminCommand({ping: 1}).ok) quit(1)"]
+
+  rabbitmq:
+    image: rabbitmq:4.2-management
+    hostname: rabbitmq
+    restart: unless-stopped
+    environment:
+      <<: *rabbit-env
+    volumes:
+      - rabbitmq:/var/lib/rabbitmq
+    healthcheck:
+      <<: *health
+      test: [CMD, rabbitmq-diagnostics, -q, check_port_connectivity]
+
+  redis:
+    image: redis:8.2-alpine
+    restart: unless-stopped
+    init: true
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    command: [redis-server, --dir, /tmp, --save, "", --appendonly, "no"]
+    tmpfs:
+      - /tmp:size=32m,mode=1777
+    healthcheck:
+      <<: *health
+      test: [CMD, redis-cli, ping]
+
+volumes:
+  mongodb:
+  rabbitmq:

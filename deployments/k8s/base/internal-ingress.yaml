@@ -1,0 +1,103 @@
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: internal-api-ingress
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/part-of: ridemesh
+    matchExpressions:
+      - key: app.kubernetes.io/name
+        operator: In
+        values: [trip, driver, payment]
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: gateway
+              app.kubernetes.io/part-of: ridemesh
+      ports:
+        - {protocol: TCP, port: 8082}
+        - {protocol: TCP, port: 8083}
+        - {protocol: TCP, port: 8084}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: gateway-to-redis
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: redis
+      app.kubernetes.io/part-of: ridemesh
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: gateway
+              app.kubernetes.io/part-of: ridemesh
+      ports:
+        - {protocol: TCP, port: 6379}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: apps-to-rabbitmq
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: rabbitmq
+      app.kubernetes.io/part-of: ridemesh
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - podSelector:
+            matchExpressions:
+              - key: app.kubernetes.io/name
+                operator: In
+                values: [gateway, trip, payment]
+            matchLabels:
+              app.kubernetes.io/part-of: ridemesh
+      ports:
+        - {protocol: TCP, port: 5672}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: trip-to-driver
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: driver
+      app.kubernetes.io/part-of: ridemesh
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: trip
+              app.kubernetes.io/part-of: ridemesh
+      ports:
+        - {protocol: TCP, port: 8083}
+
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: payment-to-trip
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: trip
+      app.kubernetes.io/part-of: ridemesh
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: payment
+              app.kubernetes.io/part-of: ridemesh
+      ports:
+        - {protocol: TCP, port: 8082}

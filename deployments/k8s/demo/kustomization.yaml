@@ -1,0 +1,25 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: ridemesh
+resources:
+  - ../base
+  - mongodb.yaml
+  - rabbitmq.yaml
+  - redis.yaml
+secretGenerator:
+  - name: ridemesh-dependencies
+    literals:
+      - internal-signing-key=ridemesh-demo-internal-key-replace-before-sharing
+      - bootstrap-email=operator@ridemesh.test
+      - bootstrap-password=ridemesh-demo-operator-password
+      - accounts-mongo-uri=mongodb://admin:ridemesh-demo@mongodb:27017/?authSource=admin
+      - redis-url=redis://redis:6379/0
+      - rate-limit-key=ridemesh-demo-rate-limit-key-replace-before-sharing
+      - trip-mongo-uri=mongodb://admin:ridemesh-demo@mongodb:27017/?authSource=admin
+      - driver-mongo-uri=mongodb://admin:ridemesh-demo@mongodb:27017/?authSource=admin
+      - payment-mongo-uri=mongodb://admin:ridemesh-demo@mongodb:27017/?authSource=admin
+      - trip-rabbitmq-url=amqp://ridemesh:ridemesh-demo@rabbitmq:5672/
+      - gateway-rabbitmq-url=amqp://ridemesh:ridemesh-demo@rabbitmq:5672/
+      - payment-rabbitmq-url=amqp://ridemesh:ridemesh-demo@rabbitmq:5672/
+      - mongo-password=ridemesh-demo
+      - rabbit-password=ridemesh-demo

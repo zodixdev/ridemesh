@@ -67,6 +67,26 @@ Stop the services with `make down`. Docker volumes are retained unless they are 
 
 The local credentials in `.env.example` are development values. Change `RIDEMESH_INTERNAL_KEY`, the bootstrap password, MongoDB credentials, RabbitMQ credentials, and `RATE_LIMIT_KEY_SECRET` before using a shared environment.
 
+## Public container images
+
+The four services are published as multi-architecture images in the GitHub Container Registry:
+
+```bash
+docker pull ghcr.io/zodixdev/ridemesh:gateway
+docker pull ghcr.io/zodixdev/ridemesh:trip
+docker pull ghcr.io/zodixdev/ridemesh:driver
+docker pull ghcr.io/zodixdev/ridemesh:payment
+```
+
+Run the complete stack from the registry without building the Go services locally:
+
+```bash
+cp .env.example .env
+make up-public
+```
+
+The service tags track `main`. Every publication also creates an immutable `<service>-sha-<commit>` tag. Git tags such as `v1.2.0` additionally create `<service>-v1.2.0`. Images support `linux/amd64` and `linux/arm64` and include build provenance and an SBOM.
+
 ## API
 
 The OpenAPI document is stored at [`api/openapi/ridemesh.json`](api/openapi/ridemesh.json). It describes authentication, rider and driver operations, operator endpoints, errors, rate-limit responses, and SSE streams.

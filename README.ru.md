@@ -67,6 +67,26 @@ make verify
 
 Значения из `.env.example` предназначены только для локальной разработки. Перед запуском в общей среде необходимо заменить `RIDEMESH_INTERNAL_KEY`, пароль bootstrap-пользователя, реквизиты MongoDB и RabbitMQ, а также `RATE_LIMIT_KEY_SECRET`.
 
+## Публичные Docker-образы
+
+Четыре сервиса публикуются как multi-architecture образы в GitHub Container Registry:
+
+```bash
+docker pull ghcr.io/zodixdev/ridemesh:gateway
+docker pull ghcr.io/zodixdev/ridemesh:trip
+docker pull ghcr.io/zodixdev/ridemesh:driver
+docker pull ghcr.io/zodixdev/ridemesh:payment
+```
+
+Полный стек можно запустить из registry без локальной сборки Go-сервисов:
+
+```bash
+cp .env.example .env
+make up-public
+```
+
+Теги сервисов соответствуют текущему состоянию `main`. Для каждой публикации также создается неизменяемый тег `<service>-sha-<commit>`. Git-тег `v1.2.0` создает теги `<service>-v1.2.0`. Образы поддерживают `linux/amd64` и `linux/arm64`, содержат build provenance и SBOM.
+
 ## API
 
 Спецификация OpenAPI находится в файле [`api/openapi/ridemesh.json`](api/openapi/ridemesh.json). В ней описаны аутентификация, операции пассажира и водителя, методы оператора, ошибки, ответы rate limiter и SSE-потоки.
